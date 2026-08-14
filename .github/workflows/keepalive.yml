@@ -1,0 +1,49 @@
+name: Supabase keep-alive
+
+# Free-tier Supabase projects auto-pause after 7 days with no requests. This
+# workflow pings each project every 3 days (well under the threshold) so none of
+# them ever idle out. The final step also commits a timestamp, which keeps GitHub
+# from auto-disabling this scheduled workflow after 60 days of repo inactivity.
+
+on:
+  schedule:
+    - cron: "0 6 */3 * *" # 06:00 UTC every 3rd day
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ping each Supabase project
+        run: |
+          set -u
+          # "Name|project-ref|publishable(anon) key"  — anon/publishable keys are
+          # client-public by design (they ship in each app's browser bundle).
+          PROJECTS=(
+            "Dissertation Muse|rgnvtvjfnnpchyzrkgtl|sb_publishable_abAw7vXLC3FhQWCiG3beOQ_BPf5WUCp"
+            "Mindful Selfish Teacher|prynyomewwdpluafbccx|sb_publishable_6E8NSY3wGMPeIiSE4nb3qw_BXiUpKsq"
+            "Property Grabber (Pull.land)|cgikjiuwgrnjluwvjiqe|sb_publishable_EsOyn2_86y-U3y07qEsf7g_JUdZ13So"
+            "EdBud|lcxoxbutkjorfddralaa|sb_publishable_H4STQPsWLDwbDOrUSmJXWA_ig1iqhu2"
+          )
+          for p in "${PROJECTS[@]}"; do
+            IFS='|' read -r name ref key <<< "$p"
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+              "https://$ref.supabase.co/auth/v1/health" -H "apikey: $key")
+            echo "$name ($ref): HTTP $code"
+          done
+          # Never fail the job on one unreachable project (e.g. one already paused
+          # needs a manual restore) — the successful pings still did their job.
+
+      - name: Record last run (keeps this scheduled workflow enabled)
+        run: |
+          date -u +"Last keep-alive run: %Y-%m-%dT%H:%M:%SZ" > last-run.md
+          git config user.name "keepalive-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last-run.md
+          git commit -m "keep-alive $(date -u +%Y-%m-%dT%H:%MZ)" || echo "nothing to commit"
+          git push || echo "push skipped"
