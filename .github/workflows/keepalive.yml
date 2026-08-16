@@ -22,6 +22,9 @@ jobs:
       - name: Ping each Supabase project
         run: |
           set -u
+          set +e  # GitHub runs this step with errexit on; turn it OFF so one
+                  # unreachable project (e.g. one already paused → host stops
+                  # resolving) can't abort the loop before the others are pinged.
           # "Name|project-ref|publishable(anon) key"  — anon/publishable keys are
           # client-public by design (they ship in each app's browser bundle).
           PROJECTS=(
